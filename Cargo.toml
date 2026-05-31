@@ -1,0 +1,20 @@
+[package]
+name = "nyancat-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Animated Nyancat served over SSH and Telnet or Raw"
+license = "MIT"
+
+[[bin]]
+name = "nyancat"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+env_logger = "0.11"
+log = "0.4"
+rand = "0.9"
+russh = "0.61"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }

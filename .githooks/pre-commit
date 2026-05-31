@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-commit gate. Enable once with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+echo "pre-commit: cargo fmt --check"
+cargo fmt --all --check
+
+echo "pre-commit: cargo clippy -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-commit: cargo check"
+cargo check --all-targets
+
+echo "pre-commit: cargo test"
+cargo test
+
+echo "pre-commit: all checks passed"
