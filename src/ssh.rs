@@ -251,3 +251,44 @@ impl Handler for NyanHandler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_key_is_generated_then_reused() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("nyancat_keytest_{}.key", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        // First call generates and persists a fresh key.
+        assert!(!path.exists());
+        let first = load_or_create_host_key(&path).expect("generate key");
+        assert!(path.exists(), "host key should be persisted to disk");
+
+        // Second call must load the *same* key, not generate a new one.
+        let second = load_or_create_host_key(&path).expect("reload key");
+        assert_eq!(
+            first.fingerprint(ssh_key::HashAlg::Sha256),
+            second.fingerprint(ssh_key::HashAlg::Sha256),
+            "reloading the host key should yield a stable identity"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dims_never_collapse_to_zero() {
+        let handler = NyanHandler::new(Arc::new(Animation::new()));
+        // A client reporting a 0-wide/0-tall window must be clamped to >= 1 so
+        // rendering never divides by or indexes past zero.
+        handler.set_dims(0, 0);
+        let (w, h) = *handler.dims.lock().unwrap();
+        assert_eq!((w, h), (1, 1));
+
+        handler.set_dims(120, 40);
+        let (w, h) = *handler.dims.lock().unwrap();
+        assert_eq!((w, h), (120, 40));
+    }
+}

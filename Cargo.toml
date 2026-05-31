@@ -18,3 +18,9 @@ log = "0.4"
 rand = "0.9"
 russh = "0.61"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
+
+[dev-dependencies]
+# The SSH integration test (tests/ssh.rs) drives a real russh client against the
+# running binary, so it needs the russh client API and a Tokio test runtime.
+russh = "0.61"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }

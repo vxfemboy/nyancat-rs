@@ -1,60 +1,31 @@
-//! End-to-end test: spawn the built binary and confirm the Telnet server
-//! greets a client and streams animation frames (ANSI background escapes) with
-//! no log/debug noise mixed into the stream.
+//! End-to-end test: spawn the built binary and confirm the Telnet server greets
+//! a client, streams animation frames (ANSI background escapes), waves goodbye
+//! when asked to quit, and never leaks log/debug noise into the stream.
 
-use std::io::Read;
-use std::net::{TcpListener, TcpStream};
-use std::process::{Child, Command};
+mod common;
+
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::time::Duration;
 
-/// Grab a currently-free localhost port by binding to :0 and releasing it.
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
+use common::TestServer;
 
-struct Server(Child);
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+/// Connect to `port` on localhost, retrying while the freshly spawned server
+/// finishes binding.
+fn connect(port: u16) -> TcpStream {
+    for _ in 0..50 {
+        if let Ok(stream) = TcpStream::connect(("127.0.0.1", port)) {
+            return stream;
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
+    panic!("telnet server never accepted a connection");
 }
 
 #[test]
 fn telnet_streams_frames() {
-    let telnet_port = free_port();
-    let ssh_port = free_port();
-    let host_key = std::env::temp_dir().join(format!("nyancat_test_key_{}", std::process::id()));
-    let _ = std::fs::remove_file(&host_key);
-
-    let child = Command::new(env!("CARGO_BIN_EXE_nyancat"))
-        .args([
-            "--telnet",
-            &format!("127.0.0.1:{telnet_port}"),
-            "--ssh",
-            &format!("127.0.0.1:{ssh_port}"),
-            "--host-key",
-            host_key.to_str().unwrap(),
-        ])
-        .spawn()
-        .expect("failed to launch nyancat binary");
-    let _server = Server(child);
-
-    // Give the server a moment to bind.
-    let mut stream = None;
-    for _ in 0..50 {
-        if let Ok(s) = TcpStream::connect(("127.0.0.1", telnet_port)) {
-            stream = Some(s);
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    let mut stream = stream.expect("server never accepted a connection");
+    let server = TestServer::spawn();
+    let mut stream = connect(server.telnet_port);
     stream
         .set_read_timeout(Some(Duration::from_secs(3)))
         .unwrap();
@@ -84,6 +55,39 @@ fn telnet_streams_frames() {
         !text.contains("INFO") && !text.contains("nyancat::"),
         "log output leaked into the client stream"
     );
+}
 
-    let _ = std::fs::remove_file(&host_key);
+#[test]
+fn telnet_says_goodbye_on_quit() {
+    let server = TestServer::spawn();
+    let mut stream = connect(server.telnet_port);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+
+    // Drain the opening banner / first frames so our 'q' is read as fresh input.
+    let mut buf = [0u8; 8192];
+    let _ = stream.read(&mut buf);
+
+    // Press 'q': the server should send a parting message and close the stream.
+    stream.write_all(b"q").unwrap();
+    stream.flush().unwrap();
+
+    let mut collected = Vec::new();
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => break, // server closed the connection — expected after quit
+            Ok(n) => collected.extend_from_slice(&buf[..n]),
+            Err(_) => break,
+        }
+        if collected.len() > 200_000 {
+            break;
+        }
+    }
+
+    let text = String::from_utf8_lossy(&collected);
+    assert!(
+        text.contains("Thanks for stopping by"),
+        "expected a goodbye message after pressing 'q'"
+    );
 }

@@ -33,6 +33,13 @@ pub fn run(animation: Arc<Animation>) -> Result<()> {
     result
 }
 
+/// True when a key event means "let me out": `q`, `Esc`, or `Ctrl+C`. Anything
+/// else just lets the cat keep flying.
+fn is_quit_key(code: KeyCode, modifiers: KeyModifiers) -> bool {
+    let ctrl_c = code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL);
+    ctrl_c || code == KeyCode::Char('q') || code == KeyCode::Esc
+}
+
 fn play(out: &mut impl Write, animation: &Animation) -> Result<()> {
     let mut frame_index = 0usize;
     loop {
@@ -41,9 +48,7 @@ fn play(out: &mut impl Write, animation: &Animation) -> Result<()> {
                 code, modifiers, ..
             }) = read()?
             {
-                let ctrl_c =
-                    code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL);
-                if ctrl_c || code == KeyCode::Char('q') || code == KeyCode::Esc {
+                if is_quit_key(code, modifiers) {
                     break;
                 }
             }
@@ -58,4 +63,25 @@ fn play(out: &mut impl Write, animation: &Animation) -> Result<()> {
         std::thread::sleep(INTERVAL);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quit_keys_stop_playback() {
+        assert!(is_quit_key(KeyCode::Char('q'), KeyModifiers::NONE));
+        assert!(is_quit_key(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(is_quit_key(KeyCode::Char('c'), KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn other_keys_keep_the_cat_flying() {
+        // A bare 'c' (no Ctrl) and unrelated keys must not end playback.
+        assert!(!is_quit_key(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert!(!is_quit_key(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert!(!is_quit_key(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(!is_quit_key(KeyCode::Char('Q'), KeyModifiers::NONE));
+    }
 }

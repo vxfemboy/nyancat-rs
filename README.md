@@ -1,6 +1,6 @@
-# nyancat
+# nyancat =^.^=
 
-Animated nyancat served over **SSH** and **Telnet**, or played locally in your terminal.
+Animated nyancat served over **SSH** and **Telnet**, or played locally in your terminal. meow~
 
 
 
